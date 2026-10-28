@@ -1,0 +1,35 @@
+# Credenciales y secretos
+/credentials/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*credentials*.json
+*secret*.json
+*token*.json
+*token*.pickle
+*.pickle
+
+# Entornos y archivos generados de Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Herramientas, logs y archivos temporales
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+*.tmp
+*.bak
