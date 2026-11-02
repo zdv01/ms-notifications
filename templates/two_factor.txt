@@ -1,0 +1,8 @@
+LigaHub - Tu código de verificación
+
+Usa este código para completar tu inicio de sesión:
+
+{{ code }}
+
+El código vence en {{ expires_minutes }} minutos.
+Solicitado el {{ requested_at }}.

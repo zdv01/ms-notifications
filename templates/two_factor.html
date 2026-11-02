@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="es"><body>
+<h1>Tu código de verificación</h1>
+<p>Usa este código para completar tu inicio de sesión en LigaHub:</p>
+<p style="font-size:32px;font-weight:bold">{{ code }}</p>
+<p>Vence en {{ expires_minutes }} minutos. Solicitado el {{ requested_at }}.</p>
+{% if has_logo %}<img src="cid:logo" width="44" height="44" alt="LigaHub">{% endif %}
+</body></html>

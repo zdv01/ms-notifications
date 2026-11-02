@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+INTEGRACION_BACKEND.md
 *.pem
 *.key
 *.crt
