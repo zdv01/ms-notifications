@@ -1,7 +1,9 @@
 import base64
 import os
 import pickle
+import re
 import threading
+from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any, Callable, Optional
@@ -56,6 +58,42 @@ def build_password_reset_message(to, sender, reset_url, expires_minutes, logo_by
         "reset_url": reset_url, "expires_minutes": expires_minutes,
         "has_logo": logo_bytes is not None,
     }, logo_bytes)
+
+
+class _TextExtractor(HTMLParser):
+    """Extrae el texto visible de un HTML para el respaldo en texto plano."""
+
+    def __init__(self):
+        super().__init__()
+        self._parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style"}:
+            self._skip += 1
+        elif tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style"} and self._skip:
+            self._skip -= 1
+
+    def handle_data(self, data):
+        if not self._skip:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return re.sub(r"\n\s*\n+", "\n\n", "".join(self._parts)).strip()
+
+
+def build_notification_message(to: list[str], sender: str, subject: str, html: str) -> EmailMessage:
+    extractor = _TextExtractor()
+    extractor.feed(html)
+    message = EmailMessage()
+    message["To"], message["From"], message["Subject"] = ", ".join(to), sender, subject
+    message.set_content(extractor.text() or subject)
+    message.add_alternative(html, subtype="html")
+    return message
 
 
 def load_logo() -> Optional[bytes]:
