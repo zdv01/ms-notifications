@@ -13,6 +13,7 @@ from mailer import (
     GmailMailer,
     MailConfigError,
     MailSendError,
+    build_notification_message,
     build_password_reset_message,
     build_two_factor_message,
     load_logo,
@@ -26,6 +27,10 @@ CODE_PATTERN = re.compile(r"\d{6}")
 MAX_EMAIL_LENGTH = 254
 TWO_FACTOR_FIELDS = {"email", "code", "expires_minutes"}
 PASSWORD_RESET_FIELDS = {"email", "reset_url", "expires_minutes"}
+NOTIFICATION_FIELDS = {"to", "subject", "html"}
+MAX_RECIPIENTS = 20
+MAX_SUBJECT_LENGTH = 200
+MAX_HTML_LENGTH = 100000
 
 
 def _valid_reset_url(value: str) -> bool:
@@ -51,6 +56,32 @@ def _valid_reset_url(value: str) -> bool:
         return ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         return False
+
+
+def _valid_notification(recipients, subject, html) -> bool:
+    if (
+        not isinstance(recipients, list)
+        or not 1 <= len(recipients) <= MAX_RECIPIENTS
+        or not all(
+            isinstance(item, str)
+            and len(item) <= MAX_EMAIL_LENGTH
+            and EMAIL_PATTERN.fullmatch(item)
+            for item in recipients
+        )
+        # Sin duplicados, ignorando mayúsculas
+        or len({item.lower() for item in recipients}) != len(recipients)
+    ):
+        return False
+    # Sin \r ni \n en el asunto: evita inyección de cabeceras
+    if (
+        not isinstance(subject, str)
+        or not subject.strip()
+        or len(subject) > MAX_SUBJECT_LENGTH
+        or "\r" in subject
+        or "\n" in subject
+    ):
+        return False
+    return isinstance(html, str) and bool(html.strip()) and len(html) <= MAX_HTML_LENGTH
 
 
 def _masked_email(address: str) -> str:
@@ -165,6 +196,34 @@ def create_app(settings: Optional[Settings] = None, mailer=None) -> Flask:
             app.logger.error("Gmail no pudo enviar el correo (%s)", exc)
             return error("No fue posible enviar el correo.", 502)
         app.logger.info("Correo de recuperación enviado a %s", _masked_email(recipient))
+        return jsonify(message="Correo enviado."), 200
+
+    @app.post("/api/notifications/send")
+    def send_notification():
+        rejected = common_checks()
+        if rejected:
+            return rejected
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or set(payload) != NOTIFICATION_FIELDS:
+            return error("Cuerpo inválido.", 400)
+        recipients, subject, html = payload["to"], payload["subject"], payload["html"]
+        if not _valid_notification(recipients, subject, html):
+            return error("Datos inválidos.", 400)
+        for recipient in recipients:
+            if not limiter.allow(f"to:{recipient.lower()}", settings.rate_per_recipient, settings.rate_window_seconds):
+                return error("Demasiadas solicitudes.", 429)
+        try:
+            mailer.send(build_notification_message(recipients, settings.sender, subject, html))
+        except MailConfigError as exc:
+            app.logger.error("Gmail no configurado: %s", exc)
+            return error("El servicio de correo no está configurado.", 500)
+        except MailSendError as exc:
+            app.logger.error("Gmail no pudo enviar el correo (%s)", exc)
+            return error("No fue posible enviar el correo.", 502)
+        app.logger.info(
+            "Notificación enviada a %d destinatario(s), primero: %s",
+            len(recipients), _masked_email(recipients[0]),
+        )
         return jsonify(message="Correo enviado."), 200
 
     return app
