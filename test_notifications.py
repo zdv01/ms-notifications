@@ -59,9 +59,11 @@ def test_clave_extra_400():
     {"to": [f"u{i}@gmail.com" for i in range(21)]},
     {"to": "a@gmail.com"},
     {"subject": "Hola\nBcc: x@y.com"},
+    {"subject": "Hola\rBcc: x@y.com"},
     {"subject": "   "},
-    {"subject": "x" * 201},
+    {"subject": "x" * 256},
     {"html": ""},
+    {"html": "   "},
     {"html": 5},
 ])
 def test_datos_invalidos_400(changes):
@@ -69,6 +71,23 @@ def test_datos_invalidos_400(changes):
     response = client.post("/api/notifications/send", json=body(**changes), headers=HEADERS)
     assert response.status_code == 400
     assert not mailer.sent
+
+
+def test_clave_incorrecta_401():
+    client, _ = make()
+    response = client.post("/api/notifications/send", json=body(), headers={"X-Service-Key": "otra-clave"})
+    assert response.status_code == 401
+
+
+def test_json_malformado_400():
+    client, _ = make()
+    response = client.post(
+        "/api/notifications/send",
+        data="{invalido",
+        content_type="application/json",
+        headers=HEADERS,
+    )
+    assert response.status_code == 400
 
 
 def test_gmail_falla_502():
@@ -82,11 +101,31 @@ def test_limite_por_destinatario_429():
     assert client.post("/api/notifications/send", json=body(), headers=HEADERS).status_code == 429
 
 
+def test_limite_atomico_con_multiples_destinatarios():
+    client, _ = make(rate_per_recipient=1)
+    # Consume cupo solo para b@gmail.com
+    assert client.post("/api/notifications/send", json=body(to=["b@gmail.com"]), headers=HEADERS).status_code == 200
+    # Intento con [a@gmail.com, b@gmail.com] debe dar 429 SIN consumir el cupo de a@gmail.com
+    assert client.post("/api/notifications/send", json=body(to=["a@gmail.com", "b@gmail.com"]), headers=HEADERS).status_code == 429
+    assert client.post("/api/notifications/send", json=body(to=["a@gmail.com"]), headers=HEADERS).status_code == 200
+
+
 def test_2fa_sigue_funcionando():
     client, mailer = make()
     response = client.post(
         "/api/2fa/send",
         json={"email": "a@gmail.com", "code": "123456", "expires_minutes": 10},
+        headers=HEADERS,
+    )
+    assert response.status_code == 200
+    assert mailer.sent[0]["To"] == "a@gmail.com"
+
+
+def test_password_reset_sigue_funcionando():
+    client, mailer = make()
+    response = client.post(
+        "/api/password-reset/send",
+        json={"email": "a@gmail.com", "reset_url": "http://localhost:5173/reset-password?token=abc", "expires_minutes": 15},
         headers=HEADERS,
     )
     assert response.status_code == 200

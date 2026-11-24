@@ -8,7 +8,8 @@ ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 def load_env_file(path: str = ENV_FILE) -> None:
     try:
-        lines = open(path, encoding="utf-8-sig").read().splitlines()
+        with open(path, encoding="utf-8-sig") as env_file:
+            lines = env_file.read().splitlines()
     except OSError:
         return
     for line in lines:

@@ -29,7 +29,7 @@ TWO_FACTOR_FIELDS = {"email", "code", "expires_minutes"}
 PASSWORD_RESET_FIELDS = {"email", "reset_url", "expires_minutes"}
 NOTIFICATION_FIELDS = {"to", "subject", "html"}
 MAX_RECIPIENTS = 20
-MAX_SUBJECT_LENGTH = 200
+MAX_SUBJECT_LENGTH = 255
 MAX_HTML_LENGTH = 100000
 
 
@@ -209,9 +209,9 @@ def create_app(settings: Optional[Settings] = None, mailer=None) -> Flask:
         recipients, subject, html = payload["to"], payload["subject"], payload["html"]
         if not _valid_notification(recipients, subject, html):
             return error("Datos inválidos.", 400)
-        for recipient in recipients:
-            if not limiter.allow(f"to:{recipient.lower()}", settings.rate_per_recipient, settings.rate_window_seconds):
-                return error("Demasiadas solicitudes.", 429)
+        recipient_keys = [f"to:{recipient.lower()}" for recipient in recipients]
+        if not limiter.allow_all(recipient_keys, settings.rate_per_recipient, settings.rate_window_seconds):
+            return error("Demasiadas solicitudes.", 429)
         try:
             mailer.send(build_notification_message(recipients, settings.sender, subject, html))
         except MailConfigError as exc:
